@@ -13,13 +13,16 @@ resource "aws_launch_template" "lt" {
   instance_type          = var.instance_type
   vpc_security_group_ids = [var.instance_sg_id]
   user_data = base64encode(<<-EOF
-    #!/bin/bash
-    yum -y update
-    amazon-linux-extras install -y nginx1
-    systemctl enable nginx
-    systemctl start nginx
-    echo "<h1>Hive Nginx on EC2 – $(hostname)</h1>" > /usr/share/nginx/html/index.html
-  EOF
+              #!/bin/bash
+              dnf update -y
+              dnf install -y docker
+              systemctl start docker
+              systemctl enable docker
+              # Allow time for docker to start
+              sleep 30
+              usermod -aG docker ec2-user
+              docker run -d -p 80:80 nginx
+              EOF
   )
 }
 
@@ -54,7 +57,14 @@ resource "aws_lb_target_group" "tg" {
   port     = 80
   protocol = "HTTP"
   vpc_id   = var.vpc_id
-  health_check { path = "/" }
+  health_check {
+    path                = "/"
+    healthy_threshold   = 3
+    unhealthy_threshold = 3
+    interval            = 30
+    timeout             = 5
+    matcher             = "200"
+  }
 }
 
 resource "aws_lb_listener" "http" {
